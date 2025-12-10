@@ -1,0 +1,15 @@
+# Security (Block API Keys)
+.env
+.env.local
+mcp.json
+mcp_config.json
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# Node / React
+node_modules/
+dist/
+.DS_Store
