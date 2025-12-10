@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, GeoJSON, Circle, LayersControl, LayerGroup } from 'react-leaflet';
-import { Scooter, Coordinate, OptimizedRoute, Hub, RedZonePOI } from '../types';
+import { Scooter, Coordinate, OptimizedRoute, Hub, RedZonePOI, DepotCandidate } from '../types';
 import { getCachedDistrictBoundaries } from '../utils/ScenarioGenerator';
 import * as turf from '@turf/turf';
 import dissolve from '@turf/dissolve';
@@ -49,7 +49,9 @@ interface MapComponentProps {
   hubs: Hub[];
   routes: OptimizedRoute[];
   center: Coordinate;
-  onMapClick?: (lat: number, lng: number) => void;
+  onMapClick?: (lat: number, lng: number) => void; // deprecated for depot; kept for compatibility
+  depotCandidates?: DepotCandidate[];
+  onDepotSelect?: (candidate: DepotCandidate) => void;
   isOptimizing?: boolean;
   subwayStations?: RedZonePOI[];
 }
@@ -109,6 +111,47 @@ const HubMarkers = React.memo(({ hubs }: { hubs: Hub[] }) => {
       {hubs.map(hub => (
         <Marker key={hub.id} position={[hub.location.lat, hub.location.lng]} icon={blueIcon}>
           <Popup>{hub.name} (Depot)</Popup>
+        </Marker>
+      ))}
+    </>
+  );
+});
+
+// Depot candidate markers (small semi-transparent blue "P")
+const candidateIcon = L.divIcon({
+  className: 'candidate-icon',
+  html: `<div style="
+    background-color: rgba(37, 99, 235, 0.2);
+    color: #1d4ed8;
+    border: 1px solid #1d4ed8;
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+  ">P</div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+const DepotCandidateMarkers = React.memo(({ candidates, onSelect }: { candidates: DepotCandidate[]; onSelect?: (c: DepotCandidate) => void }) => {
+  if (!candidates || candidates.length === 0) return null;
+  return (
+    <>
+      {candidates.map((c) => (
+        <Marker
+          key={c.id}
+          position={[c.location.lat, c.location.lng]}
+          icon={candidateIcon}
+          eventHandlers={onSelect ? { click: () => onSelect(c) } : undefined}
+        >
+          <Popup>
+            <strong>{c.name || (c.type === 'parking' ? 'Parking Lot' : 'Bus Station')}</strong><br />
+            Type: {c.type}
+          </Popup>
         </Marker>
       ))}
     </>
@@ -184,7 +227,7 @@ const RoutePolylines = React.memo(({ routes }: { routes: OptimizedRoute[] }) => 
   );
 });
 
-const MapComponent: React.FC<MapComponentProps> = ({ scooters, hubs, routes, center, onMapClick, isOptimizing, subwayStations }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ scooters, hubs, routes, center, onMapClick, depotCandidates, onDepotSelect, isOptimizing, subwayStations }) => {
   const districtBoundaries = getCachedDistrictBoundaries();
   
   // Merge all district polygons into a single unified service area
@@ -318,7 +361,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ scooters, hubs, routes, cen
       </LayersControl>
       
       <MapResizer />
-      <MapEvents onMapClick={onMapClick} isOptimizing={isOptimizing} />
+      {/* Disable free-click depot placement by omitting onMapClick; keep component for map interactions if needed */}
+      <MapEvents onMapClick={undefined} isOptimizing={isOptimizing} />
       
       {/* Unified Service Area Boundary (Non-interactive to allow map clicks for Hub placement) */}
       {unifiedServiceArea && (
@@ -330,6 +374,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ scooters, hubs, routes, cen
       )}
 
       {/* Memoized Markers and Routes for Performance */}
+      <DepotCandidateMarkers candidates={depotCandidates || []} onSelect={onDepotSelect} />
       <HubMarkers hubs={hubs} />
       <ScooterMarkers scooters={scooters} />
       <RoutePolylines routes={routes} />

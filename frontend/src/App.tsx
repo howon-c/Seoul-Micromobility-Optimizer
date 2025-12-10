@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import MapComponent from './components/MapComponent';
 import { generateScenario, GANGNAM_CENTER, fetchDistrictBoundaries, isPointInDistricts } from './utils/ScenarioGenerator';
-import { Scooter, Hub, OptimizedRoute, RedZonePOI } from './types';
-import { fetchSubwayStations } from './services/OverpassService';
-import { MapPin, RefreshCw, Truck, Play, PlusCircle, AlertCircle, CheckCircle, Clock, Route, TrendingUp } from 'lucide-react';
+import { Scooter, Hub, OptimizedRoute, RedZonePOI, DepotCandidate } from './types';
+import { fetchSubwayStations, fetchDepotCandidates } from './services/OverpassService';
+import { MapPin, RefreshCw, Truck, Play, PlusCircle, AlertCircle, CheckCircle, Clock, Route, TrendingUp, Lightbulb } from 'lucide-react';
+import { generateAnalysis } from './services/ConsultantService';
 import { solveVrp } from './services/api';
-
-// Currency helpers for consistent ₩ formatting
-const formatKrw = (value: number) =>
-  `₩${Math.abs(value).toLocaleString('en-US')}`;
 
 const formatKrwShort = (value: number) => {
   const sign = value < 0 ? '-' : '';
@@ -25,10 +22,12 @@ function App() {
   const [scooterCount, setScooterCount] = useState(150); // Increased for larger coverage area
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [subwayStations, setSubwayStations] = useState<RedZonePOI[]>([]);
+  const [depotCandidates, setDepotCandidates] = useState<DepotCandidate[]>([]);
+  const [consultantReport, setConsultantReport] = useState<string | null>(null);
 
-  // Fetch subway stations on mount
+  // Fetch subway stations and depot candidates on mount
   useEffect(() => {
-    const loadSubwayStations = async () => {
+    const loadPOIs = async () => {
       // Gangnam 3-gu Bounds (matches ScenarioGenerator.ts)
       const bounds = { south: 37.42, west: 126.90, north: 37.55, east: 127.18 };
       
@@ -37,6 +36,7 @@ function App() {
         const districtGeoJSON = await fetchDistrictBoundaries();
         
         const stations = await fetchSubwayStations(bounds);
+        const depots = await fetchDepotCandidates(bounds);
         
         // Filter stations to be strictly inside Gangnam 3-gu
         const filteredStations = stations.filter(station => 
@@ -48,13 +48,18 @@ function App() {
           new Map(filteredStations.map(s => [s.name, s])).values()
         );
         
+        // Filter depot candidates to be inside districts
+        const filteredDepots = depots.filter(d => isPointInDistricts(d.location, districtGeoJSON));
+
         setSubwayStations(uniqueStations);
+        setDepotCandidates(filteredDepots);
         console.log(`✓ Filtered & Deduplicated subway stations: ${uniqueStations.length} (from ${stations.length} raw)`);
+        console.log(`✓ Filtered depot candidates: ${filteredDepots.length} (from ${depots.length} raw)`);
       } catch (err) {
         console.error("Failed to load subway stations", err);
       }
     };
-    loadSubwayStations();
+    loadPOIs();
   }, []);
   
   const handleGenerateScenario = async () => {
@@ -72,20 +77,16 @@ function App() {
     }
   };
 
-  const handleMapClick = (lat: number, lng: number) => {
-    // Only allow depot placement when not optimizing
-    if (isOptimizing) {
-      return;
-    }
-    
+  const handleDepotSelect = (candidate: DepotCandidate) => {
+    if (isOptimizing) return;
     const newHub: Hub = {
-      id: `Hub-${Date.now()}`,
-      name: "Main Hub",
-      location: { lat, lng }
+      id: candidate.id,
+      name: candidate.name || (candidate.type === 'parking' ? 'Parking Depot' : 'Station Depot'),
+      location: candidate.location
     };
     setHubs([newHub]);
     setErrorMessage(null);
-    console.log(`✓ Depot placed at: (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    console.log(`✓ Depot selected: ${newHub.name} @ (${candidate.location.lat.toFixed(4)}, ${candidate.location.lng.toFixed(4)})`);
   };
 
   const handleOptimize = async () => {
@@ -106,6 +107,10 @@ function App() {
       const resultRoutes = await solveVrp(scooters, hubs[0], truckCount);
       setRoutes(resultRoutes);
       console.log("✅ Optimization complete!");
+
+      // Consultant analysis after optimization
+      const { report } = generateAnalysis(resultRoutes, scooters, truckCount, hubs[0]);
+      setConsultantReport(report);
     } catch (error) {
       console.error("Optimization failed:", error);
       setErrorMessage(error instanceof Error ? error.message : "Optimization failed");
@@ -116,7 +121,6 @@ function App() {
 
   // Financial Constants (2-Hour Peak Shift Model)
   const COST_PER_TRUCK = 60000;      // ₩60,000 per 2-hour shift (Labor ₩50k + Fuel/Amortization ₩10k)
-  const REVENUE_PER_SWAP = 5000;     // ₩5,000 per battery swap
   const FINE_PER_INCIDENT = 40000;   // ₩40,000 Seoul towing fine
   
   // Calculate statistics
@@ -327,9 +331,28 @@ function App() {
                   }}
                 />
               </div>
-              <p style={{ fontSize: '10px', color: '#6b7280', margin: 0, lineHeight: '1.4' }}>
-                15% High Risk (₩40K fine) near subways/bus stops, 65% Commercial (₩5K revenue), 20% Residential/Alley (₩5K revenue), rest healthy (ignored).
-              </p>
+              <p style={{ fontSize: '11px', color: '#6b7280', margin: 0, lineHeight: '1.4' }}>
+              15% High Risk (within 5m of subway/bus stops), <br />
+              65% Commercial low battery (within 15–30m of shops/cafes), <br />
+              20% Residential/Alley (20–40m jitter), <br />
+              healthy scooters ignored.</p>
+
+            <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', backgroundColor: '#e0f2fe', border: '1px solid #bfdbfe', color: '#0f172a', fontSize: '11px' }}>
+              Select a valid Parking Lot or Bus Station to establish your Depot.
+            </div>
+            {consultantReport && (
+              <div style={{ marginTop: '12px', padding: '14px', borderRadius: '10px', border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <div style={{ color: '#f59e0b', flexShrink: 0, marginTop: '2px' }}>
+                  <Lightbulb size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', marginBottom: '6px' }}>AI Consultant</div>
+                  <div style={{ fontSize: '11px', color: '#334155', lineHeight: 1.5 }}>
+                    {consultantReport}
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
 
             {/* Fleet Controls */}
@@ -538,9 +561,10 @@ function App() {
             hubs={hubs}
             routes={routes}
             center={GANGNAM_CENTER} 
-            onMapClick={handleMapClick}
             isOptimizing={isOptimizing || isLoadingScenario}
             subwayStations={subwayStations}
+            depotCandidates={depotCandidates}
+            onDepotSelect={handleDepotSelect}
           />
         </div>
       </div>

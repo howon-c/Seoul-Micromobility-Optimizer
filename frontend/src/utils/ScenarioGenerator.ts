@@ -16,6 +16,9 @@ let cachedDistrictBoundaries: any = null;
 // Cache for Red Zone POIs (separated by type)
 let cachedSubwayExitPOIs: Coordinate[] | null = null;
 let cachedBusStopPOIs: Coordinate[] | null = null;
+// Cache for commercial and residential anchors
+let cachedCommercialAnchors: Coordinate[] | null = null;
+let cachedResidentialAnchors: Coordinate[] | null = null;
 
 // Red Zone radius in meters (Seoul regulation: within 20m of subway station/exit or bus stop)
 const RED_ZONE_RADIUS_METERS = 20;
@@ -83,14 +86,12 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
   // ========================================
   let subwayExitPOIs: Coordinate[];
   let busStopPOIs: Coordinate[];
-  
-  // Use cached POIs if available
+
   if (cachedSubwayExitPOIs && cachedBusStopPOIs) {
     subwayExitPOIs = cachedSubwayExitPOIs;
     busStopPOIs = cachedBusStopPOIs;
     console.log(`✓ Using cached Red Zone POIs: ${subwayExitPOIs.length} subway exits + ${busStopPOIs.length} bus stops`);
   } else {
-    // Fetch Red Zone POIs from OpenStreetMap
     console.log("\n[OSM] Fetching Red Zone POIs (subway exits + bus stops)...");
     const osmPOIs: RedZonePOI[] = await fetchRedZonePOIs({
       south: BOUNDS.minLat,
@@ -98,160 +99,150 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
       north: BOUNDS.maxLat,
       east: BOUNDS.maxLng
     });
-    
-    // Filter to only POIs inside district boundaries and separate by type
+
     const validPOIs = osmPOIs.filter(poi => isPointInDistricts(poi.location, districtGeoJSON));
     const subwayPOIs = validPOIs.filter(p => p.type === 'subway_exit');
     const busPOIs = validPOIs.filter(p => p.type === 'bus_stop');
-    
+
     subwayExitPOIs = subwayPOIs.map(poi => poi.location);
     busStopPOIs = busPOIs.map(poi => poi.location);
-    
-    // Cache for future use
+
     cachedSubwayExitPOIs = subwayExitPOIs;
     cachedBusStopPOIs = busStopPOIs;
-    
+
     console.log(`✓ Found ${validPOIs.length} Red Zone POIs inside Gangnam 3-gu`);
     console.log(`  - Subway Exits: ${subwayExitPOIs.length}`);
     console.log(`  - Bus Stops: ${busStopPOIs.length}`);
   }
-  
+
   const subwayExitCount = subwayExitPOIs.length;
   const busStopCount = busStopPOIs.length;
   
   // ========================================
-  // BATCH A: FORCED HIGH RISK (15% of total scooters)
-  // Red Zone = within 5m of Subway Exit or Bus Stop
-  // Distribution AMONG High Risk:
-  //   - 75% near Subway Exits
-  //   - 25% near Bus Stops
+  // BATCH A: HIGH RISK (15% of total scooters)
+  // Anchors: Subway Exits + Bus Stops
+  // Jitter: 0-5m to simulate blocking entrances
   // ========================================
-  
-  // Total High Risk: 15% of TOTAL scooters
+
   const countHighRisk = Math.max(1, Math.floor(count * HIGH_RISK_PERCENTAGE));
-  
-  // Distribution AMONG High Risk nodes
-  const BUS_STOP_RATIO = 0.25; // 25% of high risk near bus stops
-  const SUBWAY_RATIO = 0.75;   // 75% of high risk near subway exits
-  
+
+  // Distribution among high risk: keep 75% subway, 25% bus for variety
+  const BUS_STOP_RATIO = 0.25;
+  const SUBWAY_RATIO = 0.75;
+
   const countNearBusStop = Math.max(0, Math.floor(countHighRisk * BUS_STOP_RATIO));
-  const countNearSubway = countHighRisk - countNearBusStop; // Remaining goes to subway (ensures total matches)
-  
+  const countNearSubway = countHighRisk - countNearBusStop;
+
   console.log(`\n[Batch A] Generating ${countHighRisk} High Risk scooters (${(HIGH_RISK_PERCENTAGE * 100).toFixed(0)}% of ${count})`);
-  console.log(`  Red Zone Definition: Within ${RED_ZONE_RADIUS_METERS}m of Subway Exit or Bus Stop`);
-  console.log(`  Distribution (among High Risk nodes):`);
-  console.log(`    - Near Subway Exits: ${countNearSubway} scooters (${(SUBWAY_RATIO * 100).toFixed(0)}% of high risk)`);
-  console.log(`    - Near Bus Stops: ${countNearBusStop} scooters (${(BUS_STOP_RATIO * 100).toFixed(0)}% of high risk)`);
-  console.log(`  Available POIs: ${subwayExitCount} subway exits + ${busStopCount} bus stops`);
-  
+  console.log(`  Anchors: subway exits + bus stops | Jitter: 0-5m | State: C`);
+  console.log(`  Distribution: ${countNearSubway} near subway exits, ${countNearBusStop} near bus stops`);
+  console.log(`  Available anchors: ${subwayExitCount} subway exits + ${busStopCount} bus stops`);
+
   const highRiskScooters: Scooter[] = [];
-  
-  // Generate scooters near SUBWAY EXITS (75% of high risk)
+
   for (let i = 0; i < countNearSubway; i++) {
     const selectedPOI = subwayExitPOIs[Math.floor(Math.random() * subwayExitPOIs.length)];
-    const location = generateValidPointNearAnchor(selectedPOI, 0, RED_ZONE_RADIUS_METERS, districtGeoJSON);
+    const location = generateValidPointNearAnchor(selectedPOI, 0, 5, districtGeoJSON); // 0-5m jitter
     
     highRiskScooters.push({
       id: `S-HR-SUB-${i + 1}`,
       location,
       state: 'C',
       batteryLevel: Math.floor(Math.random() * 50) + 20,
-      service_time: 5, // 5 minutes (rescue operation)
+      service_time: 5,
       score: TOWING_FINE
     });
   }
-  
-  // Generate scooters near BUS STOPS (25% of high risk)
+
   for (let i = 0; i < countNearBusStop; i++) {
     const selectedPOI = busStopPOIs[Math.floor(Math.random() * busStopPOIs.length)];
-    const location = generateValidPointNearAnchor(selectedPOI, 0, RED_ZONE_RADIUS_METERS, districtGeoJSON);
+    const location = generateValidPointNearAnchor(selectedPOI, 0, 5, districtGeoJSON); // 0-5m jitter
     
     highRiskScooters.push({
       id: `S-HR-BUS-${i + 1}`,
       location,
       state: 'C',
       batteryLevel: Math.floor(Math.random() * 50) + 20,
-      service_time: 5, // 5 minutes (rescue operation)
+      service_time: 5,
       score: TOWING_FINE
     });
   }
-  
-  console.log(`✓ Generated ${highRiskScooters.length} High Risk scooters within ${RED_ZONE_RADIUS_METERS}m of Red Zone POIs`);
-  console.log(`  - ${countNearSubway} near subway exits (75% of high risk)`);
-  console.log(`  - ${countNearBusStop} near bus stops (25% of high risk)`);
+
+  console.log(`✓ Generated ${highRiskScooters.length} High Risk scooters within 5m of subway/bus stops`);
   
   // ========================================
-  // BATCH B: LOW BATTERY GENERATION
-  // Split into Commercial (65%) and Residential (20%)
+  // BATCH B: LOW BATTERY (Commercial + Residential)
+  // Commercial: anchors = convenience/cafe/restaurant/fast_food/office/bike parking
+  //   jitter: 15-30m, State B
+  // Residential: anchors = residential roads, apartments, parks
+  //   jitter: 20-40m, State B
   // ========================================
   const countCommercial = Math.floor(count * COMMERCIAL_PERCENTAGE);
   const countResidential = Math.floor(count * RESIDENTIAL_PERCENTAGE);
   const countLowBattery = countCommercial + countResidential;
   const countHealthy = count - countHighRisk - countLowBattery;
-  
+
   console.log(`\n[Batch B] Generating ${countLowBattery} Low Battery scooters`);
-  console.log(`  - Commercial/Safe: ${countCommercial} scooters (${(COMMERCIAL_PERCENTAGE * 100).toFixed(0)}% of total)`);
-  console.log(`  - Residential/Alley: ${countResidential} scooters (${(RESIDENTIAL_PERCENTAGE * 100).toFixed(0)}% of total)`);
+  console.log(`  - Commercial: ${countCommercial} scooters (15–30m jitter near shops/cafes/restaurants)`);
+  console.log(`  - Residential: ${countResidential} scooters (20–40m jitter in alleys/parks/apartments)`);
   console.log(`  - Healthy (State A): ${countHealthy} scooters (ignored)`);
-  
-  // Fetch commercial anchor points (shops, cafes, offices, etc.)
-  console.log(`\n[Commercial] Fetching commercial anchor points...`);
-  const commercialAnchors = await fetchCommercialAnchors({
-    south: BOUNDS.minLat,
-    west: BOUNDS.minLng,
-    north: BOUNDS.maxLat,
-    east: BOUNDS.maxLng
-  });
-  
-  // Filter commercial anchors to ensure they are inside district boundaries
-  const filteredCommercialAnchors = commercialAnchors.filter(a => isPointInDistricts(a, districtGeoJSON));
-  console.log(`✓ Using ${filteredCommercialAnchors.length} commercial anchor points`);
-  
-  // Generate commercial locations with 15-30m jitter (simulating sidewalk clutter)
+
+  // Fetch commercial anchors (cached if available)
+  if (!cachedCommercialAnchors) {
+    console.log(`\n[Commercial] Fetching commercial anchor points...`);
+    const commercialAnchors = await fetchCommercialAnchors({
+      south: BOUNDS.minLat,
+      west: BOUNDS.minLng,
+      north: BOUNDS.maxLat,
+      east: BOUNDS.maxLng
+    });
+    cachedCommercialAnchors = commercialAnchors.filter(a => isPointInDistricts(a, districtGeoJSON));
+    console.log(`✓ Using ${cachedCommercialAnchors.length} commercial anchor points`);
+  } else {
+    console.log(`✓ Using cached commercial anchors: ${cachedCommercialAnchors.length}`);
+  }
+
+  // Fetch residential anchors (cached if available)
+  if (!cachedResidentialAnchors) {
+    console.log(`\n[Residential] Fetching residential/alleyway anchor points...`);
+    const residentialAnchors = await fetchResidentialAnchors({
+      south: BOUNDS.minLat,
+      west: BOUNDS.minLng,
+      north: BOUNDS.maxLat,
+      east: BOUNDS.maxLng
+    });
+    cachedResidentialAnchors = residentialAnchors.filter(a => isPointInDistricts(a, districtGeoJSON));
+    console.log(`✓ Using ${cachedResidentialAnchors.length} residential anchor points`);
+  } else {
+    console.log(`✓ Using cached residential anchors: ${cachedResidentialAnchors.length}`);
+  }
+
   const commercialLocations: Coordinate[] = [];
   for (let i = 0; i < countCommercial; i++) {
-    const anchor = filteredCommercialAnchors[Math.floor(Math.random() * filteredCommercialAnchors.length)];
+    const anchor = cachedCommercialAnchors![Math.floor(Math.random() * cachedCommercialAnchors!.length)];
     const location = generateValidPointNearAnchor(anchor, 15, 30, districtGeoJSON);
     commercialLocations.push(location);
   }
   console.log(`✓ Generated ${commercialLocations.length} scooters near commercial POIs (15-30m jitter)`);
-  
-  // Fetch residential anchor points (residential roads, apartment buildings)
-  console.log(`\n[Residential] Fetching residential/alleyway anchor points...`);
-  const residentialAnchors = await fetchResidentialAnchors({
-    south: BOUNDS.minLat,
-    west: BOUNDS.minLng,
-    north: BOUNDS.maxLat,
-    east: BOUNDS.maxLng
-  });
-  
-  // Filter residential anchors to ensure they are inside district boundaries
-  const filteredResidentialAnchors = residentialAnchors.filter(a => isPointInDistricts(a, districtGeoJSON));
-  console.log(`✓ Using ${filteredResidentialAnchors.length} residential anchor points`);
-  
-  // Generate residential locations with wider jitter (20-40m) for less clustering
+
   const residentialLocations: Coordinate[] = [];
   for (let i = 0; i < countResidential; i++) {
-    const anchor = filteredResidentialAnchors[Math.floor(Math.random() * filteredResidentialAnchors.length)];
+    const anchor = cachedResidentialAnchors![Math.floor(Math.random() * cachedResidentialAnchors!.length)];
     const location = generateValidPointNearAnchor(anchor, 20, 40, districtGeoJSON);
     residentialLocations.push(location);
   }
   console.log(`✓ Generated ${residentialLocations.length} scooters near residential areas (20-40m jitter)`);
-  
-  // Combine all Low Battery locations
+
   const allLowBatteryLocations = [...commercialLocations, ...residentialLocations];
-  
-  // Create Low Battery scooters
+
   const lowBatteryScooters: Scooter[] = allLowBatteryLocations.map((location, i) => ({
     id: `S-LB-${i + 1}`,
     location,
     state: 'B' as ScooterState,
-    batteryLevel: Math.floor(Math.random() * 20), // 0-20% (for display)
-    service_time: 1, // 1 minute (battery swap)
-    score: BATTERY_SWAP_REVENUE // ₩5,000 revenue
+    batteryLevel: Math.floor(Math.random() * 20),
+    service_time: 1,
+    score: BATTERY_SWAP_REVENUE
   }));
-  
-  console.log(`✓ Generated ${lowBatteryScooters.length} Low Battery scooters total`);
   
   // ========================================
   // COMBINE & SHUFFLE
@@ -273,11 +264,11 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
   
   console.log(`\n=== Scenario Summary ===`);
   console.log(`High Risk (State C): ${highRiskScooters.length} scooters @ ₩40K each = ₩${(highRiskScooters.length * TOWING_FINE / 1000).toFixed(0)}K`);
-  console.log(`  - Near Subway Exits: ${countNearSubway}`);
-  console.log(`  - Near Bus Stops: ${countNearBusStop}`);
+  console.log(`  - Subway exits (0-5m): ${countNearSubway}`);
+  console.log(`  - Bus stops (0-5m): ${countNearBusStop}`);
   console.log(`Low Battery (State B): ${lowBatteryScooters.length} scooters @ ₩5K each = ₩${(lowBatteryScooters.length * BATTERY_SWAP_REVENUE / 1000).toFixed(0)}K`);
-  console.log(`  - Commercial/Safe: ${countCommercial}`);
-  console.log(`  - Residential/Alley: ${countResidential}`);
+  console.log(`  - Commercial (15-30m): ${countCommercial}`);
+  console.log(`  - Residential (20-40m): ${countResidential}`);
   console.log(`Healthy (State A): ${countHealthy} scooters (ignored)`);
   console.log(`Total in Optimization: ${allScooters.length} scooters`);
   console.log(`Total Potential Value: ₩${(totalPotentialValue / 1000).toFixed(0)}K`);

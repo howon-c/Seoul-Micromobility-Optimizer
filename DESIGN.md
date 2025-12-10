@@ -38,6 +38,16 @@ The E-Scooter Rebalancing Demo is a Single Page Application (SPA) that demonstra
 - **MCP Tools Integration**: The React app will interact with MCP tools (either via window/client interface or TypeScript mocks)
 - **Region-Specific**: Designed for Seoul, South Korea (coordinates and APIs support this region)
 
+### 1.4 Current Implementation Snapshot (Dec 2025)
+
+- **Map & Basemap**: React-Leaflet with CartoDB Voyager tiles. Default Leaflet marker icons are sourced from CDN to avoid asset bundling issues.
+- **Service Area**: Gangnam 3-gu (Gangnam, Seocho, Songpa) boundaries merged via turf dissolve/union and rendered as a non-interactive GeoJSON overlay.
+- **High-Risk Zones**: Subway stations (deduped by name) rendered as red geofence circles (20m radius) inside an optional LayersControl overlay;
+- **Scooters & Hubs**: Scooters show yellow/red markers (low battery/high risk). Hubs are blue markers placed by map click; GeoJSON is non-interactive to allow hub placement.
+- **Scenario Generation**: Constructive generator with 15% high-risk near subway/bus stops, 65% commercial, 20% residential/alley; red-zone radius aligned to 20m.
+- **API Calls**: Omelet VRP with integer distance/duration matrices; iNavi distance matrix when available, Euclidean fallback otherwise. Road geometry fetching is present; straight-line fallback is kept. Mock route fallback remains if external APIs fail.
+- **Performance/UX**: Prefer canvas rendering; memoized markers/polylines; glow effect on routes; optional overlay toggle for high-risk circles.
+
 ---
 
 ## 2. Architecture
@@ -114,8 +124,8 @@ We will use **React Context + useReducer** for centralized state management, or 
 2. Generate random coordinates within Seoul boundaries:
    - Seoul approximate bounds: `lng: [126.7, 127.2]`, `lat: [37.4, 37.7]`
 3. Assign battery status to each scooter:
-   - **Low Battery (< 20%)**: ~30% of scooters → Mark as RED
-   - **Normal Battery (≥ 20%)**: ~70% of scooters → Mark as GREEN
+   - **Low Battery (< 20%)**:
+   - **Normal Battery (≥ 20%)**:
 4. Store scooters in application state
 5. Render markers on map with color coding
 

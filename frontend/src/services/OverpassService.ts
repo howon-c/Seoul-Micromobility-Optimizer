@@ -1,4 +1,5 @@
 import { Coordinate, RedZonePOI } from '../types';
+import { DepotCandidate } from '../types';
 
 // Cache for anchor points (keyed by bounds string)
 const anchorCache: Map<string, Coordinate[]> = new Map();
@@ -31,6 +32,8 @@ const redZonePOICache: Map<string, RedZonePOI[]> = new Map();
 
 // Cache for Subway Stations
 const subwayStationCache: Map<string, RedZonePOI[]> = new Map();
+// Cache for depot candidates
+const depotCandidateCache: Map<string, DepotCandidate[]> = new Map();
 
 /**
  * Generate cache key from bounds
@@ -52,10 +55,11 @@ function buildCommercialAnchorsQuery(bounds: OverpassBounds): string {
   const { south, west, north, east } = bounds;
   
   return `
-    [out:json][timeout:15];
+    [out:json][timeout:20];
     (
       node["shop"="convenience"](${south},${west},${north},${east});
       node["amenity"="cafe"](${south},${west},${north},${east});
+      node["amenity"="restaurant"](${south},${west},${north},${east});
       node["amenity"="fast_food"](${south},${west},${north},${east});
       node["office"](${south},${west},${north},${east});
       node["amenity"="bicycle_parking"](${south},${west},${north},${east});
@@ -80,6 +84,8 @@ function buildResidentialAnchorsQuery(bounds: OverpassBounds): string {
       way["highway"="residential"](${south},${west},${north},${east});
       way["building"="apartments"](${south},${west},${north},${east});
       node["building"="apartments"](${south},${west},${north},${east});
+      node["leisure"="park"](${south},${west},${north},${east});
+      way["leisure"="park"](${south},${west},${north},${east});
     );
     (._;>;);
     out body;
@@ -219,10 +225,8 @@ export async function fetchResidentialAnchors(bounds: OverpassBounds): Promise<C
  * This is a client-side approximation - full safety requires checking against OSM data
  * For now, we rely on the anchor filtering to ensure safe spawn points
  */
-export function isSafeLocation(coord: Coordinate): boolean {
-  // This is a placeholder - in a full implementation, we'd query OSM to check
-  // if the point is on highway=motorway, highway=trunk, or natural=water
-  // For now, we assume anchors from safe POIs are already safe
+export function isSafeLocation(_coord: Coordinate): boolean {
+  // Placeholder: anchors are pre-filtered; extend with spatial checks if needed
   return true;
 }
 
@@ -411,6 +415,74 @@ export async function fetchSubwayStations(bounds: OverpassBounds): Promise<RedZo
     
   } catch (error) {
     console.error("Failed to fetch subway stations from Overpass API:", error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch depot candidate sites (parking lots + bus stations) from OpenStreetMap
+ * Returns array of DepotCandidate with type 'parking' or 'station'
+ */
+export async function fetchDepotCandidates(bounds: OverpassBounds): Promise<DepotCandidate[]> {
+  const cacheKey = `depots_${getCacheKey(bounds)}`;
+
+  if (depotCandidateCache.has(cacheKey)) {
+    const cached = depotCandidateCache.get(cacheKey)!;
+    console.log("✓ Using cached depot candidates:", cached.length);
+    return cached;
+  }
+
+  console.log("\n[Depot Candidates] Fetching parking lots and bus stations from OpenStreetMap...");
+
+  try {
+    const query = `
+      [out:json][timeout:20];
+      (
+        node["amenity"="parking"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+        node["amenity"="bus_station"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      );
+      out body;
+    `.trim();
+
+    const url = 'https://overpass-api.de/api/interpreter';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `data=${encodeURIComponent(query)}`
+    });
+
+    if (!response.ok) {
+      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data: OverpassResponse = await response.json();
+
+    if (!data.elements || data.elements.length === 0) {
+      console.warn("No depot candidates found in this area");
+      return [];
+    }
+
+    const candidates: DepotCandidate[] = data.elements
+      .filter(node => node.type === 'node')
+      .map(node => {
+        const isParking = node.tags?.amenity === 'parking';
+        return {
+          id: `depot-${node.id}`,
+          location: { lat: node.lat, lng: node.lon },
+          type: isParking ? 'parking' : 'station',
+          name: node.tags?.name || node.tags?.['name:ko'] || (isParking ? 'Parking Lot' : 'Bus Station')
+        } as DepotCandidate;
+      });
+
+    console.log(`✓ Fetched ${candidates.length} depot candidates (parking + stations)`);
+    depotCandidateCache.set(cacheKey, candidates);
+    return candidates;
+
+  } catch (error) {
+    console.error("Failed to fetch depot candidates from Overpass API:", error);
     throw error;
   }
 }

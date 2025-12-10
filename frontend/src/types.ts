@@ -29,6 +29,14 @@ export interface RedZonePOI {
   ref?: string;
 }
 
+// Depot candidate (parking lot or bus station)
+export interface DepotCandidate {
+  id: string;
+  location: Coordinate;
+  type: 'parking' | 'station';
+  name?: string;
+}
+
 // Omelet VRP Types
 export interface VrpVisit {
   name: string;
