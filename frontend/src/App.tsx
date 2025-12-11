@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import MapComponent from './components/MapComponent';
+import OpsChat from './components/Chat/OpsChat';
 import { generateScenario, GANGNAM_CENTER, fetchDistrictBoundaries, isPointInDistricts } from './utils/ScenarioGenerator';
 import { Scooter, Hub, OptimizedRoute, RedZonePOI, DepotCandidate } from './types';
 import { fetchSubwayStations, fetchDepotCandidates } from './services/OverpassService';
-import { MapPin, RefreshCw, Truck, Play, PlusCircle, AlertCircle, CheckCircle, Clock, Route, TrendingUp, Lightbulb } from 'lucide-react';
-import { generateAnalysis } from './services/ConsultantService';
+import { MapPin, RefreshCw, Truck, Play, PlusCircle, AlertCircle, CheckCircle, Clock, Route, TrendingUp, Lightbulb, MessageCircle } from 'lucide-react';
+import { generateAnalysis, ConsultantMetrics } from './services/ConsultantService';
+import { extractFinancialStats, FinancialStats, TruckConfig } from './services/ContextBuilder';
+import { generateSystemPrompt, generateInitialSummary, AppStateSnapshot } from './utils/promptEngineering';
 import { solveVrp } from './services/api';
 
 const formatKrwShort = (value: number) => {
@@ -24,6 +27,9 @@ function App() {
   const [subwayStations, setSubwayStations] = useState<RedZonePOI[]>([]);
   const [depotCandidates, setDepotCandidates] = useState<DepotCandidate[]>([]);
   const [consultantReport, setConsultantReport] = useState<string | null>(null);
+  const [consultantMetrics, setConsultantMetrics] = useState<ConsultantMetrics | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | null>(null);
 
   // Fetch subway stations and depot candidates on mount
   useEffect(() => {
@@ -89,6 +95,9 @@ function App() {
     console.log(`✓ Depot selected: ${newHub.name} @ (${candidate.location.lat.toFixed(4)}, ${candidate.location.lng.toFixed(4)})`);
   };
 
+  // Financial Constants (2-Hour Peak Shift Model) - defined early for use in handlers
+  const COST_PER_TRUCK = 60000;      // ₩60,000 per 2-hour shift (Labor ₩50k + Fuel/Amortization ₩10k)
+
   const handleOptimize = async () => {
     if (hubs.length === 0) {
       setErrorMessage("Please place a Hub on the map first!");
@@ -109,8 +118,24 @@ function App() {
       console.log("✅ Optimization complete!");
 
       // Consultant analysis after optimization
-      const { report } = generateAnalysis(resultRoutes, scooters, truckCount, hubs[0]);
+      const { report, metrics } = generateAnalysis(resultRoutes, scooters, truckCount, hubs[0]);
       setConsultantReport(report);
+      setConsultantMetrics(metrics);
+
+      // Generate initial chat message for AI assistant
+      const financials = extractFinancialStats(scooters, resultRoutes, truckCount, COST_PER_TRUCK);
+      const appSnapshot: AppStateSnapshot = {
+        truckConfig: { truckCount, volumeCapacity: 20, shiftDurationHours: 2, costPerTruck: COST_PER_TRUCK },
+        scooterCounts: {
+          total: scooters.length,
+          highRisk: scooters.filter(s => s.state === 'C').length,
+          lowBattery: scooters.filter(s => s.state === 'B').length
+        },
+        hasRoutes: true,
+        depotName: hubs[0]?.name
+      };
+      const initialMsg = generateInitialSummary(metrics, financials, appSnapshot);
+      setChatInitialMessage(initialMsg);
     } catch (error) {
       console.error("Optimization failed:", error);
       setErrorMessage(error instanceof Error ? error.message : "Optimization failed");
@@ -119,8 +144,23 @@ function App() {
     }
   };
 
-  // Financial Constants (2-Hour Peak Shift Model)
-  const COST_PER_TRUCK = 60000;      // ₩60,000 per 2-hour shift (Labor ₩50k + Fuel/Amortization ₩10k)
+  // Generate system prompt for AI chat (memoized)
+  const systemPrompt = useMemo(() => {
+    const financials = routes.length > 0 
+      ? extractFinancialStats(scooters, routes, truckCount, COST_PER_TRUCK)
+      : null;
+    const appSnapshot: AppStateSnapshot = {
+      truckConfig: { truckCount, volumeCapacity: 20, shiftDurationHours: 2, costPerTruck: COST_PER_TRUCK },
+      scooterCounts: {
+        total: scooters.length,
+        highRisk: scooters.filter(s => s.state === 'C').length,
+        lowBattery: scooters.filter(s => s.state === 'B').length
+      },
+      hasRoutes: routes.length > 0,
+      depotName: hubs[0]?.name
+    };
+    return generateSystemPrompt(consultantMetrics, financials, appSnapshot, consultantReport);
+  }, [scooters, routes, truckCount, hubs, consultantMetrics, consultantReport]);
   
   // Calculate statistics
   const lowBatteryCount = scooters.filter(s => s.state === 'B').length;
@@ -170,23 +210,47 @@ function App() {
           </div>
         </div>
         
-        {routes.length > 0 && !isOptimizing && (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            backgroundColor: 'rgba(34, 197, 94, 0.2)',
-            color: '#4ade80',
-            padding: '6px 12px',
-            borderRadius: '20px',
-            border: '1px solid rgba(34, 197, 94, 0.4)',
-            fontSize: '11px',
-            fontWeight: '600'
-          }}>
-            <CheckCircle size={14} />
-            <span>SYSTEM ACTIVE</span>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {routes.length > 0 && !isOptimizing && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              backgroundColor: 'rgba(34, 197, 94, 0.2)',
+              color: '#4ade80',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              border: '1px solid rgba(34, 197, 94, 0.4)',
+              fontSize: '11px',
+              fontWeight: '600'
+            }}>
+              <CheckCircle size={14} />
+              <span>SYSTEM ACTIVE</span>
+            </div>
+          )}
+          
+          {/* AI Chat Button */}
+          <button
+            onClick={() => setIsChatOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: isChatOpen ? '#3b82f6' : 'rgba(59, 130, 246, 0.2)',
+              color: isChatOpen ? '#fff' : '#3b82f6',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              border: '1px solid rgba(59, 130, 246, 0.4)',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <MessageCircle size={14} />
+            <span>AI Chat</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area: Sidebar + Map */}
@@ -570,6 +634,14 @@ function App() {
           />
         </div>
       </div>
+
+      {/* AI Operations Manager Chat */}
+      <OpsChat
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        systemPrompt={systemPrompt}
+        initialMessage={chatInitialMessage || undefined}
+      />
     </div>
   );
 }
