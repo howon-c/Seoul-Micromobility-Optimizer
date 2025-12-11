@@ -89,15 +89,15 @@ async function getDistanceMatrix(locations: Coordinate[]): Promise<{
   // Try iNavi API if key is available
   if (INAVI_API_KEY) {
     try {
-      // Build symmetric matrix request with origins and destinations.
+      // Build symmetric matrix request with 'points' (iNavi standard)
+      // iNavi expects { posX: string, posY: string }
       const nodes = locations.map(loc => ({
         posX: loc.lng.toString(),
         posY: loc.lat.toString()
       }));
+      
       const requestBody = {
-        origins: nodes,
-        destinations: nodes,
-        mode: "driving",
+        points: nodes,
         traffic: 0
       };
       
@@ -125,7 +125,11 @@ async function getDistanceMatrix(locations: Coordinate[]): Promise<{
       let durationMatrix: number[][] | undefined;
       
       // Check various possible paths in the response
-      if (data?.route?.distance_matrix) {
+      if (data?.rows) {
+        // Standard iNavi response: rows[i].elements[j].distance.value / duration.value
+        distanceMatrix = data.rows.map((row: any) => row.elements.map((el: any) => el.distance.value));
+        durationMatrix = data.rows.map((row: any) => row.elements.map((el: any) => el.duration.value));
+      } else if (data?.route?.distance_matrix) {
         distanceMatrix = data.route.distance_matrix;
         durationMatrix = data.route.duration_matrix;
       } else if (data?.distance_matrix) {
@@ -452,8 +456,8 @@ async function parseVrpResponseWithGeometry(
 function generateMockRoutes(scooters: Scooter[], hub: Hub, truckCount: number): OptimizedRoute[] {
   console.log("🔧 Using Mock Mode");
   
-  // Sort scooters by score (descending) for greedy selection
-  const sortedScooters = [...scooters].sort((a, b) => b.score - a.score);
+  // Sort scooters by penalty value (descending) for greedy selection
+  const sortedScooters = [...scooters].sort((a, b) => b.penaltyValue - a.penaltyValue);
   
   const chunkSize = Math.ceil(sortedScooters.length / truckCount);
   const routes: OptimizedRoute[] = [];
