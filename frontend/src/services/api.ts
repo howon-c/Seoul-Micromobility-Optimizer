@@ -79,13 +79,7 @@ async function getDistanceMatrix(locations: Coordinate[]): Promise<{
     return calculateEuclideanMatrices(locations);
   }
   
-  // iNavi distance matrix endpoints are typically constrained; use a conservative cap.
-  const MAX_MATRIX_LOCATIONS = 25;
-  if (locations.length > MAX_MATRIX_LOCATIONS) {
-    console.warn(`More than ${MAX_MATRIX_LOCATIONS} locations, using Euclidean fallback`);
-    return calculateEuclideanMatrices(locations);
-  }
-  
+  // iNavi API supports up to 200 points (enforced in solveVrp truncation)
   // Try iNavi API if key is available
   if (INAVI_API_KEY) {
     try {
@@ -225,8 +219,8 @@ function buildVrpRequest(
   
   const highRiskCount = scooters.filter(s => s.state === 'C').length;
   const lowBatteryCount = scooters.filter(s => s.state === 'B').length;
-  console.log(`High Risk (State C): ${highRiskCount} scooters @ ₩40K penalty each`);
-  console.log(`Low Battery (State B): ${lowBatteryCount} scooters @ ₩2.5K penalty each`);
+  console.log(`High Risk (State C): ${highRiskCount} scooters @ ₩40K penalty each (volume=4, max 5/truck)`);
+  console.log(`Low Battery (State B): ${lowBatteryCount} scooters @ ₩2.5K penalty each (volume=1, max 20/truck)`);
   
   // Omelet API requires INTEGER matrices - round all values
   const intDistanceMatrix = distanceMatrix.map(row => row.map(val => Math.round(val)));
@@ -238,10 +232,13 @@ function buildVrpRequest(
       name: hub.name,
       coordinate: hub.location
     },
+    // Weighted volume approach for capacity:
+    // - High Risk (C): volume=4 → max 5 per truck (requires towing equipment)
+    // - Low Battery (B): volume=1 → max 20 per truck (battery swap only)
     visits: scooters.map(s => ({
       name: s.id,
       coordinate: s.location,
-      volume: 1.0,
+      volume: s.state === 'C' ? 4.0 : 1.0,
       service_time: s.service_time,
       unassigned_penalty: s.penaltyValue // Penalty of missing this scooter
     })),
