@@ -219,7 +219,7 @@ function buildVrpRequest(
   
   const highRiskCount = scooters.filter(s => s.state === 'C').length;
   const lowBatteryCount = scooters.filter(s => s.state === 'B').length;
-  console.log(`High Risk (State C): ${highRiskCount} scooters @ ₩40K penalty each (volume=4, max 5/truck)`);
+  console.log(`High Risk (State C): ${highRiskCount} scooters @ ₩40K penalty each (volume=0, unlimited/truck)`);
   console.log(`Low Battery (State B): ${lowBatteryCount} scooters @ ₩2.5K penalty each (volume=1, max 20/truck)`);
   
   // Omelet API requires INTEGER matrices - round all values
@@ -232,13 +232,13 @@ function buildVrpRequest(
       name: hub.name,
       coordinate: hub.location
     },
-    // Weighted volume approach for capacity:
-    // - High Risk (C): volume=4 → max 5 per truck (requires towing equipment)
-    // - Low Battery (B): volume=1 → max 20 per truck (battery swap only)
+    // Volume capacity approach:
+    // - High Risk (C): volume=0 → unlimited per truck (truck moves scooter in-place, no cargo)
+    // - Low Battery (B): volume=1 → max 20 per truck (battery swap requires carrying batteries)
     visits: scooters.map(s => ({
       name: s.id,
       coordinate: s.location,
-      volume: s.state === 'C' ? 4.0 : 1.0,
+      volume: s.state === 'C' ? 0 : 1.0,
       service_time: s.service_time,
       unassigned_penalty: s.penaltyValue // Penalty of missing this scooter
     })),
