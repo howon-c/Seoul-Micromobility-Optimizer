@@ -55,7 +55,7 @@ function buildCommercialAnchorsQuery(bounds: OverpassBounds): string {
   const { south, west, north, east } = bounds;
   
   return `
-    [out:json][timeout:20];
+    [out:json][timeout:60];
     (
       node["shop"="convenience"](${south},${west},${north},${east});
       node["amenity"="cafe"](${south},${west},${north},${east});
@@ -79,7 +79,7 @@ function buildResidentialAnchorsQuery(bounds: OverpassBounds): string {
   
   // Fetch ways and their nodes, plus apartment building nodes
   return `
-    [out:json][timeout:20];
+    [out:json][timeout:60];
     (
       way["highway"="residential"](${south},${west},${north},${east});
       way["building"="apartments"](${south},${west},${north},${east});
@@ -110,21 +110,51 @@ export async function fetchCommercialAnchors(bounds: OverpassBounds): Promise<Co
   
   try {
     const query = buildCommercialAnchorsQuery(bounds);
-    const url = 'https://overpass-api.de/api/interpreter';
     
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `data=${encodeURIComponent(query)}`
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    // Use fallback servers
+    const servers = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
+
+    let data: OverpassResponse | null = null;
+    let lastError;
+
+    for (const url of servers) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000);
+
+        console.log(`Trying Overpass server: ${url}`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+          if (data) break;
+        } catch (parseError) {
+          throw new Error(`Invalid JSON response: ${text.substring(0, 50)}...`);
+        }
+      } catch (e) {
+        lastError = e;
+        console.warn(`Overpass server ${url} failed. Trying next server...`, e);
+      }
     }
-    
-    const data: OverpassResponse = await response.json();
+
+    if (!data) {
+      throw lastError || new Error(`All Overpass servers failed.`);
+    }
     
     if (!data.elements || data.elements.length === 0) {
       console.warn("No commercial anchor points found in this area");
@@ -170,21 +200,51 @@ export async function fetchResidentialAnchors(bounds: OverpassBounds): Promise<C
   
   try {
     const query = buildResidentialAnchorsQuery(bounds);
-    const url = 'https://overpass-api.de/api/interpreter';
     
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `data=${encodeURIComponent(query)}`
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    // Use fallback servers
+    const servers = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
+
+    let data: OverpassResponse | null = null;
+    let lastError;
+
+    for (const url of servers) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000);
+
+        console.log(`Trying Overpass server: ${url}`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+          if (data) break;
+        } catch (parseError) {
+          throw new Error(`Invalid JSON response: ${text.substring(0, 50)}...`);
+        }
+      } catch (e) {
+        lastError = e;
+        console.warn(`Overpass server ${url} failed. Trying next server...`, e);
+      }
     }
-    
-    const data: OverpassResponse = await response.json();
+
+    if (!data) {
+      throw lastError || new Error(`All Overpass servers failed.`);
+    }
     
     if (!data.elements || data.elements.length === 0) {
       console.warn("No residential anchor points found in this area");
@@ -260,8 +320,9 @@ export async function fetchRedZonePOIs(bounds: OverpassBounds): Promise<RedZoneP
   
   try {
     // Fetch both subway exits and bus stops in a single query for efficiency
+    // Increased timeout to 60s
     const query = `
-      [out:json][timeout:20];
+      [out:json][timeout:60];
       (
         node["railway"="subway_entrance"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
         node["highway"="bus_stop"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
@@ -269,21 +330,53 @@ export async function fetchRedZonePOIs(bounds: OverpassBounds): Promise<RedZoneP
       out body;
     `.trim();
     
-    const url = 'https://overpass-api.de/api/interpreter';
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `data=${encodeURIComponent(query)}`
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    // Use fallback server if needed
+    const servers = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
+
+    let data: OverpassResponse | null = null;
+    let lastError;
+
+    // Retry loop
+    for (const url of servers) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000); // Client-side timeout slightly longer than query timeout
+
+        console.log(`Trying Overpass server: ${url}`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        // Try to parse JSON - this catches the "Unexpected token <" error if server returns HTML error page
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+          if (data) break; // Success!
+        } catch (parseError) {
+          throw new Error(`Invalid JSON response: ${text.substring(0, 50)}...`);
+        }
+
+      } catch (e) {
+        lastError = e;
+        console.warn(`Overpass server ${url} failed. Trying next server...`, e);
+      }
     }
     
-    const data: OverpassResponse = await response.json();
+    if (!data) {
+      throw lastError || new Error(`All Overpass servers failed.`);
+    }
     
     if (!data.elements || data.elements.length === 0) {
       console.warn("No Red Zone POIs found in this area");
@@ -359,29 +452,65 @@ export async function fetchSubwayStations(bounds: OverpassBounds): Promise<RedZo
   
   try {
     // Query for subway stations: railway=station AND station=subway
+    // Increased timeout to 60s
     const query = `
-      [out:json][timeout:20];
+      [out:json][timeout:60];
       (
         node["railway"="station"]["station"="subway"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
       );
       out body;
     `.trim();
     
-    const url = 'https://overpass-api.de/api/interpreter';
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `data=${encodeURIComponent(query)}`
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    // Use fallback server if needed
+    const servers = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
+
+    let data: OverpassResponse | null = null;
+    let lastError;
+
+    // Retry loop
+    for (const url of servers) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000); 
+
+        console.log(`Trying Overpass server: ${url}`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        // Try to parse JSON
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+          if (data) break; // Success!
+        } catch (parseError) {
+          throw new Error(`Invalid JSON response: ${text.substring(0, 50)}...`);
+        }
+
+      } catch (e) {
+        lastError = e;
+        console.warn(`Overpass server ${url} failed. Trying next server...`, e);
+      }
     }
     
-    const data: OverpassResponse = await response.json();
+    if (!data) {
+      throw lastError || new Error(`All Overpass servers failed.`);
+    }
+    
+    // Process the data that was already parsed in the loop
+    // (No need to declare 'const data' again)
     
     if (!data.elements || data.elements.length === 0) {
       console.warn("No subway stations found in this area");
@@ -436,7 +565,7 @@ export async function fetchDepotCandidates(bounds: OverpassBounds): Promise<Depo
 
   try {
     const query = `
-      [out:json][timeout:20];
+      [out:json][timeout:60];
       (
         node["amenity"="parking"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
         node["amenity"="bus_station"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
@@ -444,21 +573,53 @@ export async function fetchDepotCandidates(bounds: OverpassBounds): Promise<Depo
       out body;
     `.trim();
 
-    const url = 'https://overpass-api.de/api/interpreter';
+    // Use fallback server if needed
+    const servers = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `data=${encodeURIComponent(query)}`
-    });
+    let data: OverpassResponse | null = null;
+    let lastError;
 
-    if (!response.ok) {
-      throw new Error(`Overpass API returned ${response.status}: ${response.statusText}`);
+    // Retry loop
+    for (const url of servers) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65000); 
+
+        console.log(`Trying Overpass server: ${url}`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        // Try to parse JSON
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+          if (data) break; // Success!
+        } catch (parseError) {
+          throw new Error(`Invalid JSON response: ${text.substring(0, 50)}...`);
+        }
+
+      } catch (e) {
+        lastError = e;
+        console.warn(`Overpass server ${url} failed. Trying next server...`, e);
+      }
     }
-
-    const data: OverpassResponse = await response.json();
+    
+    if (!data) {
+      throw lastError || new Error(`All Overpass servers failed.`);
+    }
 
     if (!data.elements || data.elements.length === 0) {
       console.warn("No depot candidates found in this area");
