@@ -32,6 +32,8 @@ const RESIDENTIAL_PERCENTAGE = 0.20; // 20% Residential/Alley (Low Battery)
 // Penalty/Revenue Parameters (Korean Won)
 const TOWING_FINE = 40000;        // ₩40,000 Seoul towing fine (penalty avoidance)
 const BATTERY_SWAP_REVENUE = 5000; // ₩5,000 battery swap revenue
+const HIGH_RISK_PENALTY = 40000;
+const LOW_BATTERY_PENALTY = 2500;
 
 
 /**
@@ -150,7 +152,8 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
       state: 'C',
       batteryLevel: Math.floor(Math.random() * 50) + 20,
       service_time: 5,
-      score: TOWING_FINE
+      penaltyValue: HIGH_RISK_PENALTY,
+      score: HIGH_RISK_PENALTY
     });
   }
 
@@ -164,7 +167,8 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
       state: 'C',
       batteryLevel: Math.floor(Math.random() * 50) + 20,
       service_time: 5,
-      score: TOWING_FINE
+      penaltyValue: HIGH_RISK_PENALTY,
+      score: HIGH_RISK_PENALTY
     });
   }
 
@@ -241,7 +245,8 @@ export async function generateScenario(count: number = 50): Promise<Scooter[]> {
     state: 'B' as ScooterState,
     batteryLevel: Math.floor(Math.random() * 20),
     service_time: 1,
-    score: BATTERY_SWAP_REVENUE
+    penaltyValue: LOW_BATTERY_PENALTY,
+    score: LOW_BATTERY_PENALTY
   }));
   
   // ========================================

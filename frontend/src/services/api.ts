@@ -21,7 +21,7 @@ export async function solveVrp(
   
   console.log("=== Starting TOP Optimization ===");
   console.log(`Scooters: ${scooters.length}, Hub: ${hub.name}, Trucks: ${truckCount}`);
-  console.log(`Total Potential Score: $${scooters.reduce((sum, s) => sum + s.score, 0)}`);
+  console.log(`Total Potential Penalty: ₩${scooters.reduce((sum, s) => sum + s.penaltyValue, 0)}`);
   
   try {
     // Step 1: Build location list (Depot first, then scooters)
@@ -79,19 +79,25 @@ async function getDistanceMatrix(locations: Coordinate[]): Promise<{
     return calculateEuclideanMatrices(locations);
   }
   
-  if (locations.length > 200) {
-    console.warn("More than 200 locations, using Euclidean fallback");
+  // iNavi distance matrix endpoints are typically constrained; use a conservative cap.
+  const MAX_MATRIX_LOCATIONS = 25;
+  if (locations.length > MAX_MATRIX_LOCATIONS) {
+    console.warn(`More than ${MAX_MATRIX_LOCATIONS} locations, using Euclidean fallback`);
     return calculateEuclideanMatrices(locations);
   }
   
   // Try iNavi API if key is available
   if (INAVI_API_KEY) {
     try {
+      // Build symmetric matrix request with origins and destinations.
+      const nodes = locations.map(loc => ({
+        posX: loc.lng.toString(),
+        posY: loc.lat.toString()
+      }));
       const requestBody = {
-        points: locations.map(loc => ({
-          posX: loc.lng.toString(),
-          posY: loc.lat.toString()
-        })),
+        origins: nodes,
+        destinations: nodes,
+        mode: "driving",
         traffic: 0
       };
       
@@ -111,7 +117,8 @@ async function getDistanceMatrix(locations: Coordinate[]): Promise<{
       }
       
       const data = await response.json();
-      console.log("iNavi Distance Matrix raw response:", data);
+      console.log("iNavi Distance Matrix raw response (full):", JSON.stringify(data));
+      console.log("Response status:", response.status);
       
       // Try multiple possible response structures
       let distanceMatrix: number[][] | undefined;
@@ -215,7 +222,7 @@ function buildVrpRequest(
   const highRiskCount = scooters.filter(s => s.state === 'C').length;
   const lowBatteryCount = scooters.filter(s => s.state === 'B').length;
   console.log(`High Risk (State C): ${highRiskCount} scooters @ ₩40K penalty each`);
-  console.log(`Low Battery (State B): ${lowBatteryCount} scooters @ ₩5K penalty each`);
+  console.log(`Low Battery (State B): ${lowBatteryCount} scooters @ ₩2.5K penalty each`);
   
   // Omelet API requires INTEGER matrices - round all values
   const intDistanceMatrix = distanceMatrix.map(row => row.map(val => Math.round(val)));
@@ -232,7 +239,7 @@ function buildVrpRequest(
       coordinate: s.location,
       volume: 1.0,
       service_time: s.service_time,
-      unassigned_penalty: s.score // Score used as penalty to encourage visiting
+      unassigned_penalty: s.penaltyValue // Penalty of missing this scooter
     })),
     vehicles: Array.from({ length: truckCount }, (_, i) => ({
       name: `Truck-${i + 1}`,
@@ -391,15 +398,16 @@ async function parseVrpResponseWithGeometry(
         if (toName !== hub.name) {
           const scooter = scooters.find(s => s.id === toName);
           if (scooter) {
-            totalScore += scooter.score;
+            const penalty = scooter.penaltyValue;
+            totalScore += penalty; // penalty prevented by visiting
             visitedScooters++;
             totalDuration += scooter.service_time * 60; // convert minutes to seconds
             
             if (scooter.state === 'B') {
-              revenueCollected += scooter.score;
+              revenueCollected += penalty; // inventory saved
               lowBatteryCollected++;
             } else if (scooter.state === 'C') {
-              finesAvoided += scooter.score;
+              finesAvoided += penalty; // fines avoided
               highRiskCollected++;
             }
           }
@@ -461,9 +469,9 @@ function generateMockRoutes(scooters: Scooter[], hub: Hub, truckCount: number): 
     ];
 
     // Mock statistics
-    const totalScore = chunk.reduce((sum, s) => sum + s.score, 0);
-    const revenueCollected = chunk.filter(s => s.state === 'B').reduce((sum, s) => sum + s.score, 0);
-    const finesAvoided = chunk.filter(s => s.state === 'C').reduce((sum, s) => sum + s.score, 0);
+      const totalScore = chunk.reduce((sum, s) => sum + s.penaltyValue, 0);
+      const revenueCollected = chunk.filter(s => s.state === 'B').reduce((sum, s) => sum + s.penaltyValue, 0);
+      const finesAvoided = chunk.filter(s => s.state === 'C').reduce((sum, s) => sum + s.penaltyValue, 0);
     const highRiskCollected = chunk.filter(s => s.state === 'C').length;
     const lowBatteryCollected = chunk.filter(s => s.state === 'B').length;
     const totalDistance = chunk.length * 2000; // ~2km per scooter (mock)

@@ -12,7 +12,8 @@ export interface Scooter {
   state: ScooterState;
   batteryLevel: number; // 0-100
   service_time: number; // minutes
-  score: number; // Revenue + Fine Avoidance (for TOP)
+  penaltyValue: number; // Pain of ignoring this scooter (used as unassigned penalty)
+  score: number; // Alias for penaltyValue (kept for compatibility with VRP scoring)
 }
 
 export interface Hub {

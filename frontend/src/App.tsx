@@ -121,25 +121,25 @@ function App() {
 
   // Financial Constants (2-Hour Peak Shift Model)
   const COST_PER_TRUCK = 60000;      // ₩60,000 per 2-hour shift (Labor ₩50k + Fuel/Amortization ₩10k)
-  const FINE_PER_INCIDENT = 40000;   // ₩40,000 Seoul towing fine
   
   // Calculate statistics
   const lowBatteryCount = scooters.filter(s => s.state === 'B').length;
   const highRiskCount = scooters.filter(s => s.state === 'C').length;
   const totalScootersInRoutes = routes.reduce((sum, route) => sum + route.scootersCollected, 0);
   
-  // Financial calculations (2-Hour Peak Shift Model)
+  // Loss-prevention calculations
   const operationalCost = truckCount * COST_PER_TRUCK;
-  const collectedRevenue = routes.reduce((sum, r) => sum + r.revenueCollected, 0);
-  const finesAvoided = routes.reduce((sum, r) => sum + r.finesAvoided, 0);
+  const inventorySaved = routes.reduce((sum, r) => sum + r.revenueCollected, 0); // 2.5k per low-battery visited
+  const finesAvoided = routes.reduce((sum, r) => sum + r.finesAvoided, 0); // 40k per high-risk visited
+  const totalPenaltySaved = routes.reduce((sum, r) => sum + r.totalScore, 0); // total visited penaltyValue
   const visitedHighRiskCount = routes.reduce((sum, r) => sum + r.highRiskCollected, 0);
   const visitedLowBatteryCount = routes.reduce((sum, r) => sum + r.lowBatteryCollected, 0);
-  
-  // Calculate fines incurred (unvisited High Risk scooters)
-  const finesIncurred = (highRiskCount - visitedHighRiskCount) * FINE_PER_INCIDENT;
-  
-  // Net Profit = Revenue - Fines - Operational Costs
-  const netProfit = collectedRevenue - finesIncurred - operationalCost;
+
+  const totalPotentialPenalty = scooters.reduce((sum, s) => sum + (s.penaltyValue || 0), 0);
+  const remainingRisk = Math.max(0, totalPotentialPenalty - totalPenaltySaved);
+
+  // Net Loss Prevented = Penalty saved by visits - operational cost
+  const netLossPrevented = totalPenaltySaved - operationalCost;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
@@ -194,7 +194,8 @@ function App() {
         
         {/* Left Sidebar */}
         <aside style={{
-          width: '400px',
+          width: '420px',
+          minWidth: '360px',
           backgroundColor: '#fff',
           borderRight: '1px solid #e5e7eb',
           display: 'flex',
@@ -215,8 +216,8 @@ function App() {
                   <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#92400e', textTransform: 'uppercase' }}>Low Battery</span>
                   <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#fbbf24' }}></div>
                 </div>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#78350f', margin: 0 }}>{lowBatteryCount}</p>
-                <p style={{ fontSize: '10px', color: '#b45309', margin: 0 }}>₩5K/scooter · 1min</p>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#78350f', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${lowBatteryCount}`}>{lowBatteryCount}</p>
+                <p style={{ fontSize: '10px', color: '#b45309', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="-₩2.5K/scooter · 1min">-₩2.5K/scooter · 1min</p>
               </div>
               
               <div style={{ backgroundColor: '#fee2e2', padding: '12px', borderRadius: '8px', border: '1px solid #fecaca' }}>
@@ -224,8 +225,8 @@ function App() {
                   <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#991b1b', textTransform: 'uppercase' }}>High Risk</span>
                   <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444' }}></div>
                 </div>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#7f1d1d', margin: 0 }}>{highRiskCount}</p>
-                <p style={{ fontSize: '10px', color: '#b91c1c', margin: 0 }}>-₩40K/scooter · 5min</p>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#7f1d1d', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${highRiskCount}`}>{highRiskCount}</p>
+                <p style={{ fontSize: '10px', color: '#b91c1c', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="-₩40K/scooter · 5min">-₩40K/scooter · 5min</p>
               </div>
               
               <div style={{ backgroundColor: '#dbeafe', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
@@ -233,10 +234,10 @@ function App() {
                   <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#1e40af', textTransform: 'uppercase' }}>Trucks</span>
                   <Truck size={12} style={{ color: '#3b82f6' }} />
                 </div>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e3a8a', margin: 0 }}>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e3a8a', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${routes.length}/${truckCount}`}>
                   {routes.length}<span style={{ fontSize: '14px', fontWeight: 'normal', color: '#60a5fa' }}>/{truckCount}</span>
                 </p>
-                <p style={{ fontSize: '10px', color: '#2563eb', margin: 0 }}>2hr shift limit</p>
+                <p style={{ fontSize: '10px', color: '#2563eb', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="2hr shift limit · -₩60K/truck/shift">2hr shift limit · -₩60K/truck/shift</p>
               </div>
               
               <div style={{ backgroundColor: '#d1fae5', padding: '12px', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
@@ -244,53 +245,54 @@ function App() {
                   <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#065f46', textTransform: 'uppercase' }}>Collected</span>
                   <Route size={12} style={{ color: '#10b981' }} />
                 </div>
-                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#064e3b', margin: 0 }}>{totalScootersInRoutes}</p>
-                <p style={{ fontSize: '10px', color: '#047857', margin: 0 }}>Scooters</p>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#064e3b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${totalScootersInRoutes}`}>{totalScootersInRoutes}</p>
+                <p style={{ fontSize: '10px', color: '#047857', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="Scooters">Scooters</p>
               </div>
             </div>
             
             {/* Financial Summary (Show when routes exist) */}
             {routes.length > 0 && (
               <>
-                {/* Net Profit Card */}
+                {/* Net Loss Prevented Card */}
                 <div style={{ 
-                  background: netProfit >= 0 
+                  gridColumn: '1 / -1',
+                  background: netLossPrevented >= 0 
                     ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
                     : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                   padding: '16px', 
                   borderRadius: '12px', 
                   marginBottom: '12px',
-                  boxShadow: netProfit >= 0 
+                  boxShadow: netLossPrevented >= 0 
                     ? '0 4px 12px rgba(16, 185, 129, 0.3)' 
                     : '0 4px 12px rgba(239, 68, 68, 0.3)'
                 }}>
                   <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Net Profit (2-Hour Shift)
+                    Net Loss Prevented (2-Hour Shift)
                   </span>
                   <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#fff', margin: '4px 0 0 0', whiteSpace: 'nowrap' }}>
-                    {formatKrwShort(netProfit)}
+                    {formatKrwShort(netLossPrevented)}
                   </p>
-                  <p style={{ fontSize: '10px', color: netProfit >= 0 ? '#d1fae5' : '#fecaca', margin: '4px 0 0 0', fontWeight: 600 }}>
-                    Revenue − Fines − Op. Cost
+                  <p style={{ fontSize: '10px', color: netLossPrevented >= 0 ? '#d1fae5' : '#fecaca', margin: '4px 0 0 0', fontWeight: 600 }}>
+                    Penalty Prevented − Op. Cost
                   </p>
                 </div>
                 
-                {/* Financial Breakdown: Revenue, Fines, Operational Costs (stacked for clarity) */}
+                {/* Loss Prevention Breakdown */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 'bold', marginBottom: '4px' }}>REVENUE</div>
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#047857', whiteSpace: 'nowrap' }}>{formatKrwShort(collectedRevenue)}</div>
-                    <div style={{ fontSize: '9px', color: '#059669' }}>{visitedLowBatteryCount} swaps</div>
+                  <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px' }}>
+                    <div style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: 'bold', marginBottom: '4px' }}>POTENTIAL FINES AVOIDED</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e40af', whiteSpace: 'nowrap' }}>{formatKrwShort(finesAvoided)}</div>
+                    <div style={{ fontSize: '9px', color: '#2563eb' }}>{visitedHighRiskCount} high-risk rescued</div>
+                  </div>
+                  <div style={{ backgroundColor: '#ecfdf3', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px' }}>
+                    <div style={{ fontSize: '10px', color: '#047857', fontWeight: 'bold', marginBottom: '4px' }}>INVENTORY SAVED</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#047857', whiteSpace: 'nowrap' }}>{formatKrwShort(inventorySaved)}</div>
+                    <div style={{ fontSize: '9px', color: '#059669' }}>{visitedLowBatteryCount} low-battery recovered</div>
                   </div>
                   <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '10px', color: '#991b1b', fontWeight: 'bold', marginBottom: '4px' }}>FINES</div>
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#dc2626', whiteSpace: 'nowrap' }}>{formatKrwShort(-finesIncurred)}</div>
-                    <div style={{ fontSize: '9px', color: '#b91c1c' }}>{highRiskCount - visitedHighRiskCount} missed</div>
-                  </div>
-                  <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '10px', color: '#92400e', fontWeight: 'bold', marginBottom: '4px' }}>OP. COST</div>
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#b45309', whiteSpace: 'nowrap' }}>{formatKrwShort(-operationalCost)}</div>
-                    <div style={{ fontSize: '9px', color: '#d97706' }}>{truckCount} trucks</div>
+                    <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold', marginBottom: '4px' }}>REMAINING RISK</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#dc2626', whiteSpace: 'nowrap' }}>{formatKrwShort(-remainingRisk)}</div>
+                    <div style={{ fontSize: '9px', color: '#b91c1c' }}>{(highRiskCount - visitedHighRiskCount)} high-risk & {(lowBatteryCount - visitedLowBatteryCount)} low-battery unserved</div>
                   </div>
                 </div>
                 
@@ -460,7 +462,7 @@ function App() {
                   <PlusCircle size={16} style={{ color: '#ea580c', flexShrink: 0, marginTop: '2px' }} />
                   <div>
                     <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#9a3412', margin: 0 }}>Setup Required</p>
-                    <p style={{ fontSize: '10px', color: '#c2410c', margin: 0 }}>Click anywhere on the map to place the Depot Hub.</p>
+                    <p style={{ fontSize: '10px', color: '#c2410c', margin: 0 }}>Click a blue depot candidate (Parking/Station) to set the Depot Hub.</p>
                   </div>
                 </div>
               )}
@@ -538,11 +540,11 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fbbf24', border: '2px solid #d97706' }}></div>
-                  <span style={{ fontSize: '11px', color: '#4b5563' }}>Battery Swap (₩5K)</span>
+                  <span style={{ fontSize: '11px', color: '#4b5563' }}>Low Battery (Save ₩2.5K)</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444', border: '2px solid #b91c1c' }}></div>
-                  <span style={{ fontSize: '11px', color: '#4b5563' }}>Fine Risk (-₩40K)</span>
+                  <span style={{ fontSize: '11px', color: '#4b5563' }}>High Risk (Avoid ₩40K Fine)</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#3b82f6', border: '2px solid #1d4ed8' }}></div>
