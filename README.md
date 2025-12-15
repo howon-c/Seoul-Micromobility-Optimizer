@@ -9,7 +9,6 @@
 | Operational Dashboard | AI Consultant |
 |:---:|:---:|
 | ![Dashboard](./screenshots/Dashboard.png) | ![AI Chat](./screenshots/AI_Chat.png) |
-*(Place your screenshots in a folder named `screenshots`)*
 
 ## 📖 Project Overview
 Unlike traditional VRP solvers that focus on revenue, **ResilientFleet** addresses the critical **"Loss Prevention"** challenge in micromobility:
