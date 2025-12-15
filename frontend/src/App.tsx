@@ -202,10 +202,10 @@ function App() {
           </div>
           <div>
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '0.05em', margin: 0 }}>
-              MICROMOBILITY FLEET OPTIMIZER
+              ResilientFleet
             </h1>
             <p style={{ fontSize: '11px', color: '#9ca3af', margin: 0 }}>
-              Greater Gangnam Area (Gangnam 3-gu) Operations Demo
+            Greater Gangnam Area (Gangnam 3-gu) • E-Scooter Operations Demo
             </p>
           </div>
         </div>
@@ -359,13 +359,6 @@ function App() {
                     <div style={{ fontSize: '9px', color: '#b91c1c' }}>{(highRiskCount - visitedHighRiskCount)} high-risk & {(lowBatteryCount - visitedLowBatteryCount)} low-battery unserved</div>
                   </div>
                 </div>
-                
-                {/* Fines Avoided (Informational) */}
-                <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '10px', color: '#1e40af', fontWeight: 'bold', marginBottom: '4px' }}>FINES AVOIDED</div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2563eb' }}>{formatKrwShort(finesAvoided)}</div>
-                  <div style={{ fontSize: '9px', color: '#3b82f6' }}>{visitedHighRiskCount} rescues completed</div>
-                </div>
               </>
             )}
 
@@ -412,7 +405,7 @@ function App() {
                   <Lightbulb size={18} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', marginBottom: '6px' }}>AI Consultant</div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', marginBottom: '6px' }}>Strategic Insight</div>
                   <div style={{ fontSize: '11px', color: '#334155', lineHeight: 1.5 }}>
                     {consultantReport}
                   </div>
