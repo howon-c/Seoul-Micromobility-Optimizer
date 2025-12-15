@@ -15,7 +15,7 @@ Unlike traditional VRP solvers that focus on revenue, **ResilientFleet** address
 1.  **Regulatory Fines:** Managing high-risk scooters near subway stations (₩40,000 fine/unit).
 2.  **Dead Inventory:** Recovering low-battery scooters (<20%) to prevent revenue loss.
 
-The system solves a **Team Orienteering Problem (TOP)** with Time Windows, integrating Generative AI for strategic insights.
+The system solves a **Team Orienteering Problem (TOP)**, integrating Generative AI for strategic insights.
 
 ## ✨ Key Features
 
