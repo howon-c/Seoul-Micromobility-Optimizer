@@ -8,7 +8,7 @@
 ## 📸 Screenshots
 | Operational Dashboard | AI Consultant |
 |:---:|:---:|
-| ![Dashboard](./screenshots/Dashboard.png) | ![AI Chat](./screenshots/AI Chat.png) |
+| ![Dashboard](./screenshots/Dashboard.png) | ![AI Chat](./screenshots/AI_Chat.png) |
 *(Place your screenshots in a folder named `screenshots`)*
 
 ## 📖 Project Overview
