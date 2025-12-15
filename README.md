@@ -21,7 +21,7 @@ The system solves a **Team Orienteering Problem (TOP)** with Time Windows, integ
 
 ### 1. Stochastic Scenario Generation (Anchor-Based)
 - Simulates realistic scooter distribution in **Gangnam 3-gu**.
-- Clusters "High-Risk" nodes near subway exits and bus stops using OpenStreetMap data.
+- Generate "High-Risk" nodes near subway exits and bus stops using OpenStreetMap data.
 
 ### 2. "Loss Prevention" Optimization Engine
 - **Engine:** Omelet VRP API (Solver) + iNavi Maps API (Distance Matrix).
