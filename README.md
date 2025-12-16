@@ -46,6 +46,38 @@ The system solves a **Team Orienteering Problem (TOP)**, integrating Generative 
 
 ### Installation
 
-1. Clone the repository
-   ```bash
-   git clone [https://github.com/howon-c/Seoul-Micromobility-Optimizer](https://github.com/howon-c/Seoul-Micromobility-Optimizer.git)
+1.  **Clone the repository**
+    ```bash
+    git clone [https://github.com/howon-c/Seoul-Micromobility-Optimizer.git](https://github.com/howon-c/Seoul-Micromobility-Optimizer.git)
+    cd Seoul-Micromobility-Optimizer
+    ```
+
+2.  **Navigate to the Frontend Directory**
+    The main application code is located in the `frontend` directory.
+    ```bash
+    cd frontend
+    ```
+
+3.  **Install Dependencies**
+    Install all required Node/React packages (this includes Leaflet, Tailwind, etc.).
+    ```bash
+    npm install
+    ```
+
+4.  **Configure API Keys**
+    Create a file named **`.env`** in the `frontend` directory and populate it with your API keys. The application uses these variables for routing and AI services.
+
+    ```bash
+    VITE_OMELET_API_KEY=your_key_here
+    VITE_INAVI_API_KEY=your_key_here
+    VITE_GEMINI_API_KEY=your_key_here
+    ```
+
+5.  **Run the Development Server**
+    Start the Vite development server. The terminal will provide the link (usually `http://localhost:5173/`).
+    ```bash
+    npm run dev
+    ```
+
+6.  **Access the App**
+    Open your browser to the local address provided by the terminal (e.g., `http://localhost:5173/`) to view the **ResilientFleet** dashboard.
