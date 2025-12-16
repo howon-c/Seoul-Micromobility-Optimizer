@@ -70,7 +70,6 @@ The system solves a **Team Orienteering Problem (TOP)**, integrating Generative 
     ```bash
     VITE_OMELET_API_KEY=your_key_here
     VITE_INAVI_API_KEY=your_key_here
-    VITE_GEMINI_API_KEY=your_key_here
     ```
 
 5.  **Run the Development Server**
